@@ -141,7 +141,7 @@ Visit `/builder` to access the full form builder interface:
 - [x] Feature 3: Form Renderer (One-Question-at-a-Time)
 - [x] Feature 4: Animations & Transitions (Motion)
 - [x] Feature 5: Export/Import/Share
-- [ ] Feature 6: Webhook Integration
+- [x] Feature 6: Webhook Integration
 - [ ] Feature 7: Conditional Logic Implementation
 - [ ] Feature 8: Response Analytics Dashboard
 - [ ] Feature 9: Advanced Field Types
@@ -365,9 +365,103 @@ Form portability and sharing functionality integrated into builder:
 2. Click Import → Upload JSON → Form loads
 3. Click Share Link → URL copied to clipboard
 
+## Feature 6: Webhook Integration ✅
+
+**Status**: Complete
+
+Production-ready webhook system for Make.com, n8n, Zapier, and custom endpoints:
+
+### Core Functionality (`utils/webhook.ts`)
+- **sendWebhook()** - Sends form responses with exponential backoff retry
+- **buildWebhookPayload()** - Creates standardized payload format
+- **isValidWebhookUrl()** - SSRF prevention (blocks localhost/private IPs)
+- **testWebhook()** - Endpoint verification with test payload
+- 10-second timeout on all requests
+- Automatic retry logic for failures
+
+### Webhook Configuration UI
+Located in Form Settings → Webhooks section:
+- **Enable/Disable** - Toggle webhook notifications
+- **Webhook URL** - Enter endpoint (Make.com, n8n, Zapier, custom)
+- **Test Button** - Verify endpoint is reachable
+- **Advanced Settings** (collapsible):
+  - Custom headers for authentication (X-API-Key, Authorization, etc.)
+  - Retry count (0-5, default: 3)
+  - Retry delay (1-10s, default: 2s)
+  - Retry logic explanation
+  - Payload format documentation
+
+### Retry Logic
+Automatic exponential backoff for failed webhooks:
+- **Attempt 1**: Immediate
+- **Attempt 2**: 2s delay (configurable)
+- **Attempt 3**: 4s delay (2x)
+- **Attempt 4**: 8s delay (4x)
+- **4xx errors**: No retry (client error - bad URL, auth failure)
+- **5xx errors**: Full retry (server error - temporary)
+- **Network errors**: Full retry
+- **Timeouts**: Full retry (10s timeout)
+
+### Payload Format
+Compatible with Make.com, n8n, Zapier:
+```json
+{
+  "event": "form_response",
+  "form_id": "abc123",
+  "form_title": "Contact Form",
+  "response_id": "xyz789",
+  "submitted_at": "2024-01-15T10:30:00Z",
+  "form_response": {
+    "fields": [
+      {
+        "field_id": "field1",
+        "field_type": "short_text",
+        "field_title": "Your Name",
+        "value": "John Doe"
+      },
+      {
+        "field_id": "field2",
+        "field_type": "email",
+        "field_title": "Email Address",
+        "value": "john@example.com"
+      }
+    ]
+  }
+}
+```
+
+### Security Features
+- **SSRF Prevention**: Blocks localhost and private IP ranges
+- **URL Validation**: Only http/https protocols allowed
+- **Custom Headers**: Support for API key authentication
+- **Timeout Protection**: 10s limit prevents hanging
+- **Non-blocking**: Webhook failures don't prevent form submission
+- **Error Logging**: Console logs for debugging (no sensitive data)
+
+### Integration Flow
+1. User submits form → Response saved to localStorage
+2. If webhookEnabled → sendWebhook() called asynchronously
+3. Webhook attempts with retry logic
+4. Success/failure logged to console
+5. User sees thank you page regardless of webhook status
+
+**Testing:**
+1. Go to `/builder` → Settings → Webhooks
+2. Enable webhooks
+3. Enter webhook URL (try https://webhook.site for testing)
+4. Optional: Add custom headers for authentication
+5. Click "Test Webhook" → Verify success message
+6. Submit a form → Check webhook endpoint for data
+
+**Use Cases:**
+- **Make.com**: Connect to CRM, email, Slack, etc.
+- **n8n**: Custom automation workflows
+- **Zapier**: 3000+ app integrations
+- **Custom**: Your own backend/database
+
 ## Current Status
 
-**Features 1-5 Complete** - Full MVP with builder, forms, and sharing!
+**Features 1-6 Complete** - Full-featured Typeform replacement!
 
 The application now has:
 - Complete type system and state management (Feature 1)
@@ -375,6 +469,7 @@ The application now has:
 - One-question-at-a-time form renderer (Feature 3)
 - Smooth Motion animations throughout (Feature 4)
 - Export/import/share functionality (Feature 5)
+- Production-ready webhook integration (Feature 6)
 - 14 field types fully implemented
 - Response storage to localStorage
 - Complete end-to-end flow
@@ -385,7 +480,12 @@ The application now has:
 3. Export forms as JSON for backup
 4. Import forms for duplication/migration
 5. Share form URLs `/forms/[formId]` via clipboard
-6. Fill out forms with beautiful animations
-7. View responses in localStorage
+6. **Send responses to Make.com, n8n, Zapier, or custom webhooks**
+7. **Configure retry logic and authentication headers**
+8. **Test webhooks before going live**
+9. Fill out forms with beautiful animations
+10. View responses in localStorage
 
-Next steps: Webhook integration, conditional logic, analytics dashboard.
+**This is now a fully viable Typeform alternative** with the core features needed for production use.
+
+Next steps: Conditional logic, response analytics dashboard, advanced field types.

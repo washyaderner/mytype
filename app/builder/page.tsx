@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DndContext } from '@dnd-kit/core';
 import { useFormStore } from '@/lib/store';
 import { getDefaultFieldConfig } from '@/utils/form-helpers';
 import { sanitizeFormConfig } from '@/utils/security';
+import { exportFormToJSON, importFormFromJSON, copyToClipboard, generateFormURL } from '@/utils/export-import';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FieldPalette } from '@/components/form-builder/FieldPalette';
 import { FormCanvas } from '@/components/form-builder/FormCanvas';
@@ -41,6 +42,7 @@ function BuilderComponent() {
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'fields' | 'settings'>('fields');
   const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load form on mount or when ID changes
   useEffect(() => {
@@ -161,6 +163,57 @@ function BuilderComponent() {
     setIsSaving(false);
   };
 
+  const handleExport = () => {
+    if (!currentForm) return;
+    try {
+      exportFormToJSON(currentForm);
+      alert('✅ Form exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('❌ Export failed. Please try again.');
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const imported = await importFormFromJSON(file);
+      const newForm = createForm(imported);
+      setCurrentFormId(newForm.id);
+      setCurrentForm(newForm.id);
+      router.push(`/builder?id=${newForm.id}`);
+      alert('✅ Form imported successfully!');
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('❌ Import failed. Please check the file and try again.');
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleShare = async () => {
+    if (!currentFormId) return;
+
+    try {
+      const url = generateFormURL(currentFormId);
+      const success = await copyToClipboard(url);
+
+      if (success) {
+        alert(`✅ Form link copied to clipboard!\n\n${url}`);
+      } else {
+        alert(`⚠️ Could not copy automatically. Here's your link:\n\n${url}`);
+      }
+    } catch (error) {
+      console.error('Share error:', error);
+      alert('❌ Failed to generate share link.');
+    }
+  };
+
   if (!currentForm) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -216,12 +269,29 @@ function BuilderComponent() {
             <Button variant="ghost" size="sm" onClick={handleCreateNewForm}>
               + New Form
             </Button>
+            <Button variant="ghost" size="sm" onClick={handleExport}>
+              Export
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()}>
+              Import
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleShare}>
+              Share Link
+            </Button>
             <Button variant="secondary" size="sm" onClick={handlePreview}>
               Preview
             </Button>
             <Button size="sm" onClick={handleSave} isLoading={isSaving}>
               {isSaving ? 'Saving...' : 'Saved'}
             </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImport}
+              className="hidden"
+              aria-label="Import form JSON file"
+            />
           </div>
         </div>
 

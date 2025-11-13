@@ -140,10 +140,11 @@ Visit `/builder` to access the full form builder interface:
 - [x] Feature 2: Form Builder UI
 - [x] Feature 3: Form Renderer (One-Question-at-a-Time)
 - [x] Feature 4: Animations & Transitions (Motion)
-- [ ] Feature 5: Conditional Logic Implementation
-- [ ] Feature 6: Response Analytics Dashboard
-- [ ] Feature 7: Advanced Field Types
-- [ ] Feature 8: Export & Integrations
+- [x] Feature 5: Export/Import/Share
+- [ ] Feature 6: Webhook Integration
+- [ ] Feature 7: Conditional Logic Implementation
+- [ ] Feature 8: Response Analytics Dashboard
+- [ ] Feature 9: Advanced Field Types
 
 ## Feature 3: Form Renderer & Animations ✅
 
@@ -324,15 +325,56 @@ Support for complex form logic (ready for implementation):
 
 MIT
 
+## Feature 5: Export/Import/Share ✅
+
+**Status**: Complete
+
+Form portability and sharing functionality integrated into builder:
+
+### Export Forms
+- **exportFormToJSON()** utility (`utils/export-import.ts`)
+- Sanitizes form data before export (XSS prevention)
+- Downloads as formatted JSON with date stamp
+- Filename format: `form-title-2024-01-15.json`
+- Export button in builder top bar
+
+### Import Forms
+- **importFormFromJSON()** utility with validation
+- Validates required fields (title, fields array)
+- Sanitizes all imported data
+- Strips IDs for regeneration (prevents conflicts)
+- Handles errors gracefully with user feedback
+- Import button triggers file picker (.json only)
+
+### Share Forms
+- **generateFormURL()** creates shareable links
+- **copyToClipboard()** with cross-browser support
+- Fallback for older browsers (document.execCommand)
+- Share Link button copies URL to clipboard
+- Format: `{origin}/forms/{formId}`
+
+### Security Features
+- All exports pass through `sanitizeFormConfig()`
+- Import validation prevents malformed data
+- MIME type filtering (`.json`, `application/json`)
+- No sensitive data in error messages
+- File input reset after import
+
+**Testing:**
+1. Click Export → JSON downloads
+2. Click Import → Upload JSON → Form loads
+3. Click Share Link → URL copied to clipboard
+
 ## Current Status
 
-**Features 1-4 Complete** - Full MVP with builder and public form experience!
+**Features 1-5 Complete** - Full MVP with builder, forms, and sharing!
 
 The application now has:
 - Complete type system and state management (Feature 1)
 - Full drag-and-drop form builder with security (Feature 2)
 - One-question-at-a-time form renderer (Feature 3)
 - Smooth Motion animations throughout (Feature 4)
+- Export/import/share functionality (Feature 5)
 - 14 field types fully implemented
 - Response storage to localStorage
 - Complete end-to-end flow
@@ -340,8 +382,10 @@ The application now has:
 **You can now:**
 1. Build forms with drag-and-drop at `/builder`
 2. Configure all field properties
-3. Share form URLs `/forms/[formId]`
-4. Fill out forms with beautiful animations
-5. View responses in localStorage
+3. Export forms as JSON for backup
+4. Import forms for duplication/migration
+5. Share form URLs `/forms/[formId]` via clipboard
+6. Fill out forms with beautiful animations
+7. View responses in localStorage
 
-Next steps: Conditional logic, analytics dashboard, and integrations.
+Next steps: Webhook integration, conditional logic, analytics dashboard.

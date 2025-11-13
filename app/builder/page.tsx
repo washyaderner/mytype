@@ -31,6 +31,7 @@ function BuilderComponent() {
     createForm,
     updateForm,
     getForm,
+    duplicateForm,
     addField,
     updateField,
     deleteField,
@@ -214,6 +215,18 @@ function BuilderComponent() {
     }
   };
 
+  const handleDuplicate = () => {
+    if (!currentFormId || !currentForm) return;
+
+    const duplicated = duplicateForm(currentFormId);
+    if (duplicated) {
+      setCurrentFormId(duplicated.id);
+      setCurrentForm(duplicated.id);
+      router.push(`/builder?id=${duplicated.id}`);
+      alert(`✅ Form duplicated successfully!\n\nNew form: "${duplicated.title}"`);
+    }
+  };
+
   if (!currentForm) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -268,6 +281,9 @@ function BuilderComponent() {
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={handleCreateNewForm}>
               + New Form
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleDuplicate}>
+              Duplicate
             </Button>
             <Button variant="ghost" size="sm" onClick={handleExport}>
               Export

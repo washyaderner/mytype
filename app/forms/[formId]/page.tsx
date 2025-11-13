@@ -1,12 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { nanoid } from 'nanoid';
 import { useFormStore } from '@/lib/store';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { DynamicForm } from '@/components/form-renderer/DynamicForm';
 import { ThankYou } from '@/components/form-renderer/ThankYou';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { sendWebhook } from '@/utils/webhook';
+import type { FormResponse } from '@/types';
 
 /**
  * Public Form Page
@@ -22,9 +25,10 @@ export default function FormPage() {
 
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleSubmit = (data: Record<string, any>) => {
-    // Save response to store
-    saveResponse({
+  const handleSubmit = async (data: Record<string, any>) => {
+    // Build response object with ID
+    const response: FormResponse = {
+      id: nanoid(),
       formId,
       responses: Object.entries(data).map(([fieldId, value]) => {
         const field = form?.fields.find((f) => f.id === fieldId);
@@ -38,7 +42,40 @@ export default function FormPage() {
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
       isComplete: true,
+    };
+
+    // Save response to store (pass without ID since store generates its own)
+    saveResponse({
+      formId: response.formId,
+      responses: response.responses,
+      startedAt: response.startedAt,
+      completedAt: response.completedAt,
+      isComplete: response.isComplete,
     });
+
+    // Send webhook if enabled
+    if (form?.settings.webhookEnabled && form.settings.webhookUrl) {
+      try {
+        const webhookResult = await sendWebhook(
+          form,
+          response,
+          form.settings.webhookUrl,
+          form.settings.webhookHeaders,
+          form.settings.webhookRetryCount,
+          form.settings.webhookRetryDelay
+        );
+
+        console.log('Webhook result:', webhookResult);
+
+        if (!webhookResult.success) {
+          console.error('Webhook failed after retries:', webhookResult);
+          // Don't block submission on webhook failure
+        }
+      } catch (error) {
+        console.error('Webhook error:', error);
+        // Don't block submission on webhook error
+      }
+    }
 
     setIsSubmitted(true);
 

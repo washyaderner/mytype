@@ -128,6 +128,13 @@ export interface FormSettings {
   sendConfirmationEmail?: boolean;
   confirmationEmailSubject?: string;
   confirmationEmailBody?: string;
+
+  // Webhooks
+  webhookEnabled?: boolean;
+  webhookUrl?: string;
+  webhookHeaders?: Record<string, string>; // For authentication (X-API-Key, etc.)
+  webhookRetryCount?: number; // Default: 3
+  webhookRetryDelay?: number; // Initial delay in ms (Default: 2000)
 }
 
 // Form Response Types

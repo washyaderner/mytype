@@ -1,17 +1,79 @@
 'use client';
 
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { DndContext } from '@dnd-kit/core';
 import { useFormStore } from '@/lib/store';
 import { getDefaultFieldConfig } from '@/utils/form-helpers';
-import { useState } from 'react';
+import { sanitizeFormConfig } from '@/utils/security';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { FieldPalette } from '@/components/form-builder/FieldPalette';
+import { FormCanvas } from '@/components/form-builder/FormCanvas';
+import { FieldPropertyEditor } from '@/components/form-builder/FieldPropertyEditor';
+import { FormSettingsPanel } from '@/components/form-builder/FormSettingsPanel';
+import { Button, Input } from '@/components/ui';
+import type { FieldType, FieldConfig } from '@/types';
 
-export default function BuilderPage() {
-  const { forms, createForm, updateForm, deleteForm, addField, duplicateForm } = useFormStore();
-  const [testMessage, setTestMessage] = useState<string>('');
+/**
+ * Form Builder Component (inner)
+ *
+ * SECURITY: All user inputs sanitized through security utilities
+ * Error boundaries prevent crashes from exposing sensitive data
+ */
+function BuilderComponent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const formId = searchParams.get('id');
 
-  const handleCreateTestForm = () => {
+  const {
+    forms,
+    createForm,
+    updateForm,
+    getForm,
+    addField,
+    updateField,
+    deleteField,
+    reorderFields,
+    setCurrentForm,
+  } = useFormStore();
+
+  const [currentFormId, setCurrentFormId] = useState<string | null>(formId);
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<'fields' | 'settings'>('fields');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load form on mount or when ID changes
+  useEffect(() => {
+    if (formId && forms.length > 0) {
+      const form = getForm(formId);
+      if (form) {
+        setCurrentFormId(formId);
+        setCurrentForm(formId);
+      } else {
+        // Form not found, create new
+        handleCreateNewForm();
+      }
+    } else if (!currentFormId && forms.length === 0) {
+      // No forms exist, create first one
+      handleCreateNewForm();
+    } else if (!currentFormId && forms.length > 0) {
+      // No form selected, load first one
+      setCurrentFormId(forms[0].id);
+      setCurrentForm(forms[0].id);
+      router.push(`/builder?id=${forms[0].id}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formId, forms.length]);
+
+  const currentForm = currentFormId ? getForm(currentFormId) : null;
+  const selectedField = selectedFieldId
+    ? currentForm?.fields.find((f) => f.id === selectedFieldId)
+    : null;
+
+  const handleCreateNewForm = () => {
     const newForm = createForm({
-      title: 'Test Form',
-      description: 'This is a test form created from the builder',
+      title: 'Untitled Form',
+      description: '',
       fields: [],
       settings: {
         theme: 'light',
@@ -20,154 +82,233 @@ export default function BuilderPage() {
         allowBackNavigation: true,
         oneQuestionAtATime: true,
         submitButtonText: 'Submit',
-        showSubmitButton: true,
         showThankYouMessage: true,
         thankYouMessage: 'Thank you for your response!',
       },
     });
 
-    // Add some test fields
-    addField(newForm.id, getDefaultFieldConfig('short_text'));
-    addField(newForm.id, getDefaultFieldConfig('email'));
-    addField(newForm.id, getDefaultFieldConfig('multiple_choice'));
-
-    setTestMessage(`Created form: ${newForm.title} (ID: ${newForm.id})`);
+    setCurrentFormId(newForm.id);
+    setCurrentForm(newForm.id);
+    router.push(`/builder?id=${newForm.id}`);
   };
 
-  const handleUpdateForm = (formId: string) => {
-    updateForm(formId, {
-      title: `Updated Form - ${new Date().toLocaleTimeString()}`,
-    });
-    setTestMessage(`Updated form: ${formId}`);
+  const handleSwitchForm = (formId: string) => {
+    setCurrentFormId(formId);
+    setCurrentForm(formId);
+    setSelectedFieldId(null);
+    router.push(`/builder?id=${formId}`);
   };
 
-  const handleDuplicateForm = (formId: string) => {
-    const duplicated = duplicateForm(formId);
-    if (duplicated) {
-      setTestMessage(`Duplicated form: ${duplicated.title} (ID: ${duplicated.id})`);
+  const handleAddField = (fieldType: FieldType) => {
+    if (!currentFormId) return;
+
+    const defaultConfig = getDefaultFieldConfig(fieldType);
+    addField(currentFormId, defaultConfig);
+
+    // Auto-select the new field (it will be the last one)
+    const form = getForm(currentFormId);
+    if (form && form.fields.length > 0) {
+      const lastField = form.fields[form.fields.length - 1];
+      setSelectedFieldId(lastField.id);
     }
   };
 
-  const handleDeleteForm = (formId: string) => {
-    deleteForm(formId);
-    setTestMessage(`Deleted form: ${formId}`);
+  const handleUpdateField = (fieldId: string, updates: Partial<FieldConfig>) => {
+    if (!currentFormId) return;
+    updateField(currentFormId, fieldId, updates);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h1 className="text-3xl font-bold mb-4 text-gray-900">Form Builder - Test Page</h1>
-          <p className="text-gray-600 mb-6">
-            This page demonstrates Feature 1: Schema & Store Setup. You can create, update, and delete forms.
-            All data persists to localStorage.
-          </p>
+  const handleDeleteField = (fieldId: string) => {
+    if (!currentFormId) return;
+    deleteField(currentFormId, fieldId);
+    if (selectedFieldId === fieldId) {
+      setSelectedFieldId(null);
+    }
+  };
 
-          <div className="space-y-4">
+  const handleReorderFields = (fieldIds: string[]) => {
+    if (!currentFormId) return;
+    reorderFields(currentFormId, fieldIds);
+  };
+
+  const handleUpdateFormTitle = (title: string) => {
+    if (!currentFormId) return;
+    updateForm(currentFormId, { title });
+  };
+
+  const handleUpdateFormDescription = (description: string) => {
+    if (!currentFormId) return;
+    updateForm(currentFormId, { description });
+  };
+
+  const handleUpdateSettings = (updates: any) => {
+    if (!currentFormId || !currentForm) return;
+    updateForm(currentFormId, {
+      settings: { ...currentForm.settings, ...updates },
+    });
+  };
+
+  const handlePreview = () => {
+    if (currentFormId) {
+      window.open(`/forms/${currentFormId}`, '_blank');
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    // Simulate save delay (in real app, this would sync to backend)
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setIsSaving(false);
+  };
+
+  if (!currentForm) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <div className="h-screen flex flex-col bg-white">
+        {/* Top Bar */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white">
+          <div className="flex items-center gap-4 flex-1">
             <button
-              onClick={handleCreateTestForm}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              onClick={() => router.push('/forms')}
+              className="text-gray-600 hover:text-gray-900"
+              title="Back to forms"
             >
-              Create Test Form
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
 
-            {testMessage && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-green-800 text-sm">{testMessage}</p>
-              </div>
+            <div className="flex-1 max-w-md">
+              <Input
+                value={currentForm.title}
+                onChange={handleUpdateFormTitle}
+                placeholder="Form title..."
+                className="text-lg font-semibold border-0 focus:ring-0 px-2"
+                sanitize={true}
+              />
+            </div>
+
+            {forms.length > 1 && (
+              <select
+                value={currentFormId || ''}
+                onChange={(e) => handleSwitchForm(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+              >
+                {forms.map((form) => (
+                  <option key={form.id} value={form.id}>
+                    {form.title}
+                  </option>
+                ))}
+              </select>
             )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleCreateNewForm}>
+              + New Form
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handlePreview}>
+              Preview
+            </Button>
+            <Button size="sm" onClick={handleSave} isLoading={isSaving}>
+              {isSaving ? 'Saving...' : 'Saved'}
+            </Button>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold mb-4 text-gray-900">
-            Stored Forms ({forms.length})
-          </h2>
+        {/* Tabs */}
+        <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-200 bg-gray-50">
+          <button
+            onClick={() => {
+              setActivePanel('fields');
+              setSelectedFieldId(null);
+            }}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activePanel === 'fields'
+                ? 'bg-white text-purple-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Fields
+          </button>
+          <button
+            onClick={() => {
+              setActivePanel('settings');
+              setSelectedFieldId(null);
+            }}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activePanel === 'settings'
+                ? 'bg-white text-purple-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Settings
+          </button>
+        </div>
 
-          {forms.length === 0 ? (
-            <p className="text-gray-500">No forms yet. Create one to get started!</p>
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {activePanel === 'fields' ? (
+            <>
+              <FieldPalette />
+              <FormCanvas
+                fields={currentForm.fields}
+                selectedFieldId={selectedFieldId}
+                onAddField={handleAddField}
+                onSelectField={setSelectedFieldId}
+                onDeleteField={handleDeleteField}
+                onReorderFields={handleReorderFields}
+              />
+              <FieldPropertyEditor
+                field={selectedField || null}
+                onUpdateField={(updates) => {
+                  if (selectedFieldId) {
+                    handleUpdateField(selectedFieldId, updates);
+                  }
+                }}
+                onClose={() => setSelectedFieldId(null)}
+              />
+            </>
           ) : (
-            <div className="space-y-4">
-              {forms.map((form) => (
-                <div
-                  key={form.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:border-purple-300 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">{form.title}</h3>
-                      {form.description && (
-                        <p className="text-sm text-gray-600 mt-1">{form.description}</p>
-                      )}
-                      <div className="mt-2 space-y-1">
-                        <p className="text-xs text-gray-500">
-                          ID: <span className="font-mono">{form.id}</span>
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Fields: {form.fields.length}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Created: {new Date(form.createdAt).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Updated: {new Date(form.updatedAt).toLocaleString()}
-                        </p>
-                      </div>
-
-                      {form.fields.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-semibold text-gray-700 mb-1">Fields:</p>
-                          <ul className="text-xs text-gray-600 space-y-1">
-                            {form.fields.map((field, idx) => (
-                              <li key={field.id} className="flex items-center gap-2">
-                                <span className="text-gray-400">{idx + 1}.</span>
-                                <span className="font-medium">{field.type}</span>
-                                <span className="text-gray-500">-</span>
-                                <span>{field.title || 'Untitled'}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-2 ml-4">
-                      <button
-                        onClick={() => handleUpdateForm(form.id)}
-                        className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-                      >
-                        Update
-                      </button>
-                      <button
-                        onClick={() => handleDuplicateForm(form.id)}
-                        className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-                      >
-                        Duplicate
-                      </button>
-                      <button
-                        onClick={() => handleDeleteForm(form.id)}
-                        className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-2xl mx-auto">
+                <FormSettingsPanel
+                  settings={currentForm.settings}
+                  onUpdateSettings={handleUpdateSettings}
+                />
+              </div>
             </div>
           )}
         </div>
-
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">Feature 1 Status: ✅ Complete</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>✅ TypeScript interfaces defined</li>
-            <li>✅ Zustand store with localStorage persistence</li>
-            <li>✅ Form management utilities</li>
-            <li>✅ Zod schema generator</li>
-          </ul>
-        </div>
       </div>
-    </div>
+    </ErrorBoundary>
+  );
+}
+
+/**
+ * Form Builder Page (wrapper with Suspense)
+ */
+export default function BuilderPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading...</h2>
+          </div>
+        </div>
+      }
+    >
+      <BuilderComponent />
+    </Suspense>
   );
 }
